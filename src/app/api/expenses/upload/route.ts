@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, hasPermission } from '@/presentation/middleware/auth';
 import { ExpenseRepository } from '@/infrastructure/repositories/ExpenseRepository';
 import { ProviderRepository } from '@/infrastructure/repositories/ProviderRepository';
+import { BudgetPeriodRepository } from '@/infrastructure/repositories/BudgetPeriodRepository';
 import { ProcessInvoicePDFUseCase } from '@/application/use-cases/expense/ProcessInvoicePDFUseCase';
 import { ExchangeRateService } from '@/infrastructure/services/ExchangeRateService';
 import { OpenAIService } from '@/infrastructure/services/OpenAIService';
@@ -24,9 +25,10 @@ export async function POST(request: NextRequest) {
     const companyId = parseInt(formData.get('companyId') as string);
     const costCenterId = parseInt(formData.get('costCenterId') as string);
     const expenseTypeId = parseInt(formData.get('expenseTypeId') as string);
-    const budgetPeriodId = parseInt(formData.get('budgetPeriodId') as string);
+    const budgetPeriodIdParam = formData.get('budgetPeriodId') as string;
+    const budgetPeriodId = budgetPeriodIdParam ? parseInt(budgetPeriodIdParam) : null;
 
-    if (!file || !companyId || !costCenterId || !expenseTypeId || !budgetPeriodId) {
+    if (!file || !companyId || !costCenterId || !expenseTypeId) {
       return NextResponse.json(
         { error: 'Faltan parámetros requeridos' },
         { status: 400 }
@@ -46,12 +48,14 @@ export async function POST(request: NextRequest) {
 
     const expenseRepository = new ExpenseRepository();
     const providerRepository = new ProviderRepository();
+    const budgetPeriodRepository = new BudgetPeriodRepository();
     const openAIService = new OpenAIService();
     const exchangeRateService = new ExchangeRateService();
 
     const processInvoiceUseCase = new ProcessInvoicePDFUseCase(
       expenseRepository,
       providerRepository,
+      budgetPeriodRepository,
       openAIService,
       exchangeRateService
     );

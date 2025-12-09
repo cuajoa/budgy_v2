@@ -1,5 +1,6 @@
 import { ExpenseRepository } from '@/infrastructure/repositories/ExpenseRepository';
 import { ProviderRepository } from '@/infrastructure/repositories/ProviderRepository';
+import { BudgetPeriodRepository } from '@/infrastructure/repositories/BudgetPeriodRepository';
 import { OpenAIService, ExtractedInvoiceData } from '@/infrastructure/services/OpenAIService';
 import { ExchangeRateService } from '@/infrastructure/services/ExchangeRateService';
 import { Expense, CreateExpenseDTO } from '@/domain/entities/Expense';
@@ -9,6 +10,7 @@ export class ProcessInvoicePDFUseCase {
   constructor(
     private expenseRepository: ExpenseRepository,
     private providerRepository: ProviderRepository,
+    private budgetPeriodRepository: BudgetPeriodRepository,
     private openAIService: OpenAIService,
     private exchangeRateService: ExchangeRateService
   ) {}
@@ -18,9 +20,18 @@ export class ProcessInvoicePDFUseCase {
     companyId: number,
     costCenterId: number,
     expenseTypeId: number,
-    budgetPeriodId: number,
+    budgetPeriodId: number | null,
     userId: string
   ): Promise<Expense> {
+    // Si no se proporciona budgetPeriodId, obtener el período activo
+    let finalBudgetPeriodId = budgetPeriodId;
+    if (!finalBudgetPeriodId) {
+      const activePeriod = await this.budgetPeriodRepository.findActive();
+      if (!activePeriod) {
+        throw new Error('No hay un período de presupuesto activo');
+      }
+      finalBudgetPeriodId = activePeriod.id;
+    }
     // Obtener lista de proveedores para ayudar a OpenAI
     const providers = await this.providerRepository.findAll();
     const providerNames = providers.map((p) => p.name);
@@ -31,15 +42,39 @@ export class ProcessInvoicePDFUseCase {
     // Buscar o crear proveedor
     let providerId: number;
     if (extractedData.providerName) {
-      const existingProvider = providers.find(
-        (p) => p.name.toLowerCase() === extractedData.providerName!.toLowerCase()
-      );
+      // Primero buscar por taxId (CUIT) si está disponible (más confiable)
+      let existingProvider = extractedData.providerTaxId
+        ? providers.find(
+            (p) => p.taxId && p.taxId.replace(/\D/g, '') === extractedData.providerTaxId!.replace(/\D/g, '')
+          )
+        : null;
+
+      // Si no se encontró por taxId, buscar por nombre (case insensitive)
+      if (!existingProvider) {
+        existingProvider = providers.find(
+          (p) => p.name.toLowerCase() === extractedData.providerName!.toLowerCase()
+        );
+      }
+      
       if (existingProvider) {
         providerId = existingProvider.id;
+        // Actualizar taxId si no lo tiene y lo extrajimos
+        if (extractedData.providerTaxId && !existingProvider.taxId) {
+          await this.providerRepository.update(existingProvider.id, {
+            taxId: extractedData.providerTaxId,
+          });
+        }
+        // Actualizar nombre si es diferente (normalizar)
+        if (existingProvider.name !== extractedData.providerName) {
+          await this.providerRepository.update(existingProvider.id, {
+            name: extractedData.providerName,
+          });
+        }
       } else {
-        // Crear nuevo proveedor si no existe
+        // Crear nuevo proveedor con taxId si está disponible
         const newProvider = await this.providerRepository.create({
           name: extractedData.providerName,
+          taxId: extractedData.providerTaxId || undefined,
         });
         providerId = newProvider.id;
       }
@@ -80,7 +115,7 @@ export class ProcessInvoicePDFUseCase {
       providerId,
       costCenterId,
       expenseTypeId,
-      budgetPeriodId,
+      budgetPeriodId: finalBudgetPeriodId,
       invoiceNumber: extractedData.invoiceNumber,
       invoiceDate,
       amountArs,

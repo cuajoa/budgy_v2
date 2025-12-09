@@ -34,12 +34,11 @@ export default function NewExpensePage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>([]);
-  const [budgetPeriods, setBudgetPeriods] = useState<BudgetPeriod[]>([]);
+  const [activePeriod, setActivePeriod] = useState<BudgetPeriod | null>(null);
   const [formData, setFormData] = useState({
     companyId: '',
     costCenterId: '',
     expenseTypeId: '',
-    budgetPeriodId: '',
   });
 
   useEffect(() => {
@@ -59,7 +58,10 @@ export default function NewExpensePage() {
 
         setCompanies(companiesData);
         setExpenseTypes(expenseTypesData);
-        setBudgetPeriods(periodsData);
+        // Tomar el primer período activo (debería haber solo uno)
+        if (periodsData && periodsData.length > 0) {
+          setActivePeriod(periodsData[0]);
+        }
       } catch (error) {
         console.error('Error cargando datos:', error);
       }
@@ -93,6 +95,12 @@ export default function NewExpensePage() {
       return;
     }
 
+    if (!activePeriod) {
+      alert('No hay un período de presupuesto activo. Por favor, crea uno en Configuración.');
+      setUploading(false);
+      return;
+    }
+
     setUploading(true);
     try {
       const formDataToSend = new FormData();
@@ -100,7 +108,7 @@ export default function NewExpensePage() {
       formDataToSend.append('companyId', formData.companyId);
       formDataToSend.append('costCenterId', formData.costCenterId);
       formDataToSend.append('expenseTypeId', formData.expenseTypeId);
-      formDataToSend.append('budgetPeriodId', formData.budgetPeriodId);
+      formDataToSend.append('budgetPeriodId', activePeriod.id.toString());
 
       const response = await fetch('/api/expenses/upload', {
         method: 'POST',
@@ -192,22 +200,17 @@ export default function NewExpensePage() {
                 </select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Período de Presupuesto</label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={formData.budgetPeriodId}
-                  onChange={(e) => setFormData({ ...formData, budgetPeriodId: e.target.value })}
-                  required
-                >
-                  <option value="">Seleccionar...</option>
-                  {budgetPeriods.map((bp) => (
-                    <option key={bp.id} value={bp.id}>
-                      {bp.description}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {activePeriod && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Período de Presupuesto</label>
+                  <div className="w-full rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {activePeriod.description} (Activo)
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Se utilizará automáticamente el período activo
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

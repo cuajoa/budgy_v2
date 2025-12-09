@@ -3,6 +3,7 @@ import pdfParse from 'pdf-parse';
 
 export interface ExtractedInvoiceData {
   providerName?: string;
+  providerTaxId?: string; // CUIT del proveedor
   invoiceNumber?: string;
   invoiceDate?: string;
   amount?: number;
@@ -38,16 +39,23 @@ export class OpenAIService {
       // Preparar prompt para OpenAI
       const providersList = providers.length > 0 ? providers.join(', ') : 'desconocido';
       
-      const prompt = `Eres un asistente experto en extraer información de facturas. Analiza el siguiente texto extraído de un PDF de factura y extrae la información relevante.
+      const prompt = `Eres un asistente experto en extraer información de facturas argentinas. Analiza el siguiente texto extraído de un PDF de factura y extrae la información relevante.
 
 Texto de la factura:
 ${text}
 
 Lista de proveedores conocidos: ${providersList}
 
+IMPORTANTE: 
+- El nombre del proveedor debe extraerse del campo "Razón Social:" que aparece en el encabezado de la factura
+- El CUIT (tax_id) del proveedor debe extraerse del campo "CUIT:" que aparece en el encabezado de la factura
+- Si encuentras "Razón Social:" en el texto, usa ese valor exacto para providerName
+- Si encuentras "CUIT:" en el texto, usa ese valor exacto para providerTaxId
+
 Extrae la siguiente información en formato JSON:
 {
-  "providerName": "nombre del proveedor (debe coincidir con uno de la lista si es posible)",
+  "providerName": "nombre del proveedor extraído del campo 'Razón Social:' del encabezado (debe coincidir con uno de la lista si es posible, pero usa el valor exacto de 'Razón Social:')",
+  "providerTaxId": "CUIT del proveedor extraído del campo 'CUIT:' del encabezado (solo números, sin guiones)",
   "invoiceNumber": "número de factura",
   "invoiceDate": "fecha de factura en formato YYYY-MM-DD",
   "amount": número del monto (solo el número, sin símbolos),
