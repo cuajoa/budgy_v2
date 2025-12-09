@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/presentation/components/ui/card';
 import { Button } from '@/presentation/components/ui/button';
-import { FileText, Download, Filter, X } from 'lucide-react';
+import { FileText, Download, Filter, X, Edit, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Expense {
@@ -13,6 +13,7 @@ interface Expense {
   costCenterId: number;
   expenseTypeId: number;
   budgetPeriodId: number;
+  companyAreaId?: number;
   invoiceNumber?: string;
   invoiceDate: string;
   amountArs: number;
@@ -44,13 +45,39 @@ interface ExpenseType {
   name: string;
 }
 
+interface CompanyArea {
+  id: number;
+  name: string;
+  companyId: number;
+}
+
+interface BudgetPeriod {
+  id: number;
+  description: string;
+}
+
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>([]);
+  const [companyAreas, setCompanyAreas] = useState<CompanyArea[]>([]);
+  const [budgetPeriods, setBudgetPeriods] = useState<BudgetPeriod[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    providerId: '',
+    costCenterId: '',
+    expenseTypeId: '',
+    budgetPeriodId: '',
+    companyAreaId: '',
+    invoiceNumber: '',
+    invoiceDate: '',
+    amountArs: '',
+    description: '',
+  });
   const [filters, setFilters] = useState({
     companyId: '',
     costCenterId: '',
@@ -78,24 +105,30 @@ export default function ExpensesPage() {
 
   const fetchInitialData = async () => {
     try {
-      const [companiesRes, providersRes, expenseTypesRes, costCentersRes] = await Promise.all([
+      const [companiesRes, providersRes, expenseTypesRes, costCentersRes, areasRes, periodsRes] = await Promise.all([
         fetch('/api/companies'),
         fetch('/api/providers'),
         fetch('/api/expense-types'),
         fetch('/api/cost-centers'),
+        fetch('/api/company-areas'),
+        fetch('/api/budget-periods'),
       ]);
 
-      const [companiesData, providersData, expenseTypesData, costCentersData] = await Promise.all([
+      const [companiesData, providersData, expenseTypesData, costCentersData, areasData, periodsData] = await Promise.all([
         companiesRes.json(),
         providersRes.json(),
         expenseTypesRes.json(),
         costCentersRes.json(),
+        areasRes.json(),
+        periodsRes.json(),
       ]);
 
       setCompanies(companiesData);
       setProviders(providersData);
       setExpenseTypes(expenseTypesData);
       setCostCenters(costCentersData);
+      setCompanyAreas(areasData);
+      setBudgetPeriods(periodsData);
     } catch (error) {
       console.error('Error cargando datos iniciales:', error);
     }
@@ -114,9 +147,11 @@ export default function ExpensesPage() {
 
       const response = await fetch(`/api/expenses?${params.toString()}`);
       const data = await response.json();
-      setExpenses(data);
+      // Asegurar que siempre sea un array
+      setExpenses(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error cargando gastos:', error);
+      setExpenses([]); // En caso de error, establecer array vacío
     } finally {
       setLoading(false);
     }
@@ -137,6 +172,11 @@ export default function ExpensesPage() {
 
   const getExpenseTypeName = (expenseTypeId: number) => {
     return expenseTypes.find((et) => et.id === expenseTypeId)?.name || `Tipo ${expenseTypeId}`;
+  };
+
+  const getCompanyAreaName = (areaId?: number) => {
+    if (!areaId) return '-';
+    return companyAreas.find((a) => a.id === areaId)?.name || `Área ${areaId}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -160,6 +200,74 @@ export default function ExpensesPage() {
   };
 
   const hasActiveFilters = filters.companyId || filters.costCenterId;
+
+  const handleEdit = (expense: Expense) => {
+    setEditingExpense(expense);
+    setEditFormData({
+      providerId: expense.providerId.toString(),
+      costCenterId: expense.costCenterId.toString(),
+      expenseTypeId: expense.expenseTypeId.toString(),
+      budgetPeriodId: expense.budgetPeriodId.toString(),
+      companyAreaId: expense.companyAreaId?.toString() || '',
+      invoiceNumber: expense.invoiceNumber || '',
+      invoiceDate: expense.invoiceDate.split('T')[0], // YYYY-MM-DD
+      amountArs: expense.amountArs.toString(),
+      description: expense.description || '',
+    });
+    // Cargar cost centers y areas para la compañía del gasto
+    fetch(`/api/cost-centers?companyId=${expense.companyId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const allCostCenters = [...costCenters, ...data.filter((cc: CostCenter) => !costCenters.find(c => c.id === cc.id))];
+        setCostCenters(allCostCenters);
+      });
+    fetch(`/api/company-areas?companyId=${expense.companyId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const allAreas = [...companyAreas, ...data.filter((a: CompanyArea) => !companyAreas.find(area => area.id === a.id))];
+        setCompanyAreas(allAreas);
+      });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingExpense) return;
+
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/expenses/${editingExpense.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerId: parseInt(editFormData.providerId),
+          costCenterId: parseInt(editFormData.costCenterId),
+          expenseTypeId: parseInt(editFormData.expenseTypeId),
+          budgetPeriodId: parseInt(editFormData.budgetPeriodId),
+          companyAreaId: editFormData.companyAreaId ? parseInt(editFormData.companyAreaId) : undefined,
+          invoiceNumber: editFormData.invoiceNumber || undefined,
+          invoiceDate: editFormData.invoiceDate,
+          amountArs: parseFloat(editFormData.amountArs),
+          description: editFormData.description || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        setEditingExpense(null);
+        fetchExpenses();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error guardando:', error);
+      alert('Error al guardar los cambios');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getBudgetPeriodName = (periodId: number) => {
+    return budgetPeriods.find((p) => p.id === periodId)?.description || `Período ${periodId}`;
+  };
 
 
   return (
@@ -262,16 +370,23 @@ export default function ExpensesPage() {
                   <tr className="border-b">
                     <th className="text-left p-3 text-sm font-medium text-muted-foreground">Fecha</th>
                     <th className="text-left p-3 text-sm font-medium text-muted-foreground">Centro de Costo</th>
+                    <th className="text-left p-3 text-sm font-medium text-muted-foreground">Área Asociada</th>
                     <th className="text-left p-3 text-sm font-medium text-muted-foreground">Proveedor</th>
                     <th className="text-left p-3 text-sm font-medium text-muted-foreground">Tipo</th>
                     <th className="text-left p-3 text-sm font-medium text-muted-foreground">Factura</th>
                     <th className="text-right p-3 text-sm font-medium text-muted-foreground">Monto ARS</th>
                     <th className="text-right p-3 text-sm font-medium text-muted-foreground">Monto USD</th>
                     <th className="text-right p-3 text-sm font-medium text-muted-foreground">Tipo Cambio</th>
+                    <th className="text-center p-3 text-sm font-medium text-muted-foreground">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(() => {
+                    // Asegurar que expenses sea un array
+                    if (!Array.isArray(expenses) || expenses.length === 0) {
+                      return null;
+                    }
+
                     // Agrupar gastos por compañía y luego por centro de costo
                     const groupedByCompany = expenses.reduce((acc, expense) => {
                       const companyId = expense.companyId;
@@ -325,6 +440,9 @@ export default function ExpensesPage() {
                             >
                               <td className="p-3 text-sm">{formatDate(expense.invoiceDate)}</td>
                               <td className="p-3 text-sm">{getCostCenterName(expense.costCenterId)}</td>
+                              <td className="p-3 text-sm text-muted-foreground">
+                                {getCompanyAreaName(expense.companyAreaId)}
+                              </td>
                               <td className="p-3 text-sm">{getProviderName(expense.providerId)}</td>
                               <td className="p-3 text-sm">{getExpenseTypeName(expense.expenseTypeId)}</td>
                               <td className="p-3 text-sm">
@@ -339,6 +457,16 @@ export default function ExpensesPage() {
                               <td className="p-3 text-sm text-right text-muted-foreground">
                                 {expense.exchangeRate.toFixed(2)}
                               </td>
+                              <td className="p-3 text-sm text-center">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEdit(expense)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </td>
                             </tr>
                           );
                         });
@@ -352,7 +480,7 @@ export default function ExpensesPage() {
                             key={`subtotal-cc-${costCenterId}`}
                             className="border-t bg-muted/30 font-medium"
                           >
-                            <td colSpan={5} className="p-3 text-sm text-right">
+                            <td colSpan={6} className="p-3 text-sm text-right">
                               Subtotal {getCostCenterName(costCenterId)}:
                             </td>
                             <td className="p-3 text-sm text-right">
@@ -361,6 +489,7 @@ export default function ExpensesPage() {
                             <td className="p-3 text-sm text-right">
                               {formatCurrency(costCenterTotalUsd, 'USD')}
                             </td>
+                            <td></td>
                             <td></td>
                           </tr>
                         );
@@ -372,7 +501,7 @@ export default function ExpensesPage() {
                           key={`subtotal-company-${companyId}`}
                           className="border-t-2 bg-muted/50 font-semibold"
                         >
-                          <td colSpan={5} className="p-3 text-sm">
+                          <td colSpan={6} className="p-3 text-sm">
                             Subtotal {getCompanyName(companyId)}:
                           </td>
                           <td className="p-3 text-sm text-right">
@@ -381,6 +510,7 @@ export default function ExpensesPage() {
                           <td className="p-3 text-sm text-right">
                             {formatCurrency(companyTotalUsd, 'USD')}
                           </td>
+                          <td></td>
                           <td></td>
                         </tr>
                       );
@@ -391,7 +521,7 @@ export default function ExpensesPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 font-bold bg-primary/10">
-                    <td colSpan={5} className="p-3 text-sm">
+                    <td colSpan={6} className="p-3 text-sm">
                       Total General:
                     </td>
                     <td className="p-3 text-sm text-right">
@@ -407,6 +537,7 @@ export default function ExpensesPage() {
                       )}
                     </td>
                     <td></td>
+                    <td></td>
                   </tr>
                 </tfoot>
               </table>
@@ -414,6 +545,179 @@ export default function ExpensesPage() {
           )}
         </CardContent>
       </Card>
+
+      {editingExpense && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Editar Gasto</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveEdit();
+              }}
+              className="space-y-4"
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Proveedor *</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.providerId}
+                    onChange={(e) => setEditFormData({ ...editFormData, providerId: e.target.value })}
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Centro de Costo *</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.costCenterId}
+                    onChange={(e) => setEditFormData({ ...editFormData, costCenterId: e.target.value })}
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {costCenters
+                      .filter((cc) => cc.companyId === editingExpense.companyId)
+                      .map((cc) => (
+                        <option key={cc.id} value={cc.id}>
+                          {cc.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Tipo de Gasto *</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.expenseTypeId}
+                    onChange={(e) => setEditFormData({ ...editFormData, expenseTypeId: e.target.value })}
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {expenseTypes.map((et) => (
+                      <option key={et.id} value={et.id}>
+                        {et.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Período de Presupuesto *</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.budgetPeriodId}
+                    onChange={(e) => setEditFormData({ ...editFormData, budgetPeriodId: e.target.value })}
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {budgetPeriods.map((bp) => (
+                      <option key={bp.id} value={bp.id}>
+                        {bp.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Área Asociada (Opcional)</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.companyAreaId}
+                    onChange={(e) => setEditFormData({ ...editFormData, companyAreaId: e.target.value })}
+                  >
+                    <option value="">Ninguna</option>
+                    {companyAreas
+                      .filter((a) => a.companyId === editingExpense.companyId)
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Número de Factura</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.invoiceNumber}
+                    onChange={(e) => setEditFormData({ ...editFormData, invoiceNumber: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Fecha de Factura *</label>
+                  <input
+                    type="date"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.invoiceDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, invoiceDate: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Monto en ARS *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.amountArs}
+                    onChange={(e) => setEditFormData({ ...editFormData, amountArs: e.target.value })}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    El monto en USD se recalculará automáticamente
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Descripción</label>
+                <textarea
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px]"
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-4 pt-4 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingExpense(null)}
+                  disabled={saving}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    'Guardar Cambios'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

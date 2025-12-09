@@ -13,7 +13,7 @@ export class ExpenseRepository implements IExpenseRepository {
   async findAll(filters?: ExpenseFilters): Promise<Expense[]> {
     let query = `
       SELECT id, company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
-             invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+             company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
              description, pdf_path, created_by, created_at, updated_at, deleted_at
       FROM expenses
       WHERE deleted_at IS NULL
@@ -61,7 +61,7 @@ export class ExpenseRepository implements IExpenseRepository {
   async findById(id: number): Promise<Expense | null> {
     const result = await this.pool.query(
       `SELECT id, company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
-              invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+              company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
               description, pdf_path, created_by, created_at, updated_at, deleted_at
        FROM expenses WHERE id = $1 AND deleted_at IS NULL`,
       [id]
@@ -72,11 +72,11 @@ export class ExpenseRepository implements IExpenseRepository {
   async create(data: CreateExpenseDTO): Promise<Expense> {
     const result = await this.pool.query(
       `INSERT INTO expenses (company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
-                            invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+                            company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
                             description, pdf_path, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id, company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
-                 invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+                 company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
                  description, pdf_path, created_by, created_at, updated_at, deleted_at`,
       [
         data.companyId,
@@ -84,6 +84,7 @@ export class ExpenseRepository implements IExpenseRepository {
         data.costCenterId,
         data.expenseTypeId,
         data.budgetPeriodId,
+        data.companyAreaId || null,
         data.invoiceNumber || null,
         data.invoiceDate,
         data.amountArs,
@@ -117,6 +118,10 @@ export class ExpenseRepository implements IExpenseRepository {
     if (data.budgetPeriodId !== undefined) {
       updates.push(`budget_period_id = $${paramCount++}`);
       values.push(data.budgetPeriodId);
+    }
+    if (data.companyAreaId !== undefined) {
+      updates.push(`company_area_id = $${paramCount++}`);
+      values.push(data.companyAreaId || null);
     }
     if (data.invoiceNumber !== undefined) {
       updates.push(`invoice_number = $${paramCount++}`);
@@ -157,7 +162,7 @@ export class ExpenseRepository implements IExpenseRepository {
     const result = await this.pool.query(
       `UPDATE expenses SET ${updates.join(', ')} WHERE id = $${paramCount} AND deleted_at IS NULL
        RETURNING id, company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
-                 invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+                 company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
                  description, pdf_path, created_by, created_at, updated_at, deleted_at`,
       values
     );
@@ -203,6 +208,7 @@ export class ExpenseRepository implements IExpenseRepository {
       costCenterId: row.cost_center_id,
       expenseTypeId: row.expense_type_id,
       budgetPeriodId: row.budget_period_id,
+      companyAreaId: row.company_area_id || undefined,
       invoiceNumber: row.invoice_number,
       invoiceDate: row.invoice_date,
       amountArs: parseFloat(row.amount_ars),

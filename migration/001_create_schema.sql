@@ -122,25 +122,32 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Triggers para actualizar updated_at
+-- Triggers para actualizar updated_at (idempotentes)
+DROP TRIGGER IF EXISTS update_companies_updated_at ON companies;
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_budget_periods_updated_at ON budget_periods;
 CREATE TRIGGER update_budget_periods_updated_at BEFORE UPDATE ON budget_periods
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_expense_types_updated_at ON expense_types;
 CREATE TRIGGER update_expense_types_updated_at BEFORE UPDATE ON expense_types
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_providers_updated_at ON providers;
 CREATE TRIGGER update_providers_updated_at BEFORE UPDATE ON providers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_cost_centers_updated_at ON cost_centers;
 CREATE TRIGGER update_cost_centers_updated_at BEFORE UPDATE ON cost_centers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_expenses_updated_at ON expenses;
 CREATE TRIGGER update_expenses_updated_at BEFORE UPDATE ON expenses
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_user_permissions_updated_at ON user_permissions;
 CREATE TRIGGER update_user_permissions_updated_at BEFORE UPDATE ON user_permissions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

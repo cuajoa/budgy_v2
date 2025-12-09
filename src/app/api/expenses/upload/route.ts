@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
     const expenseTypeId = parseInt(formData.get('expenseTypeId') as string);
     const budgetPeriodIdParam = formData.get('budgetPeriodId') as string;
     const budgetPeriodId = budgetPeriodIdParam ? parseInt(budgetPeriodIdParam) : null;
+    const companyAreaIdParam = formData.get('companyAreaId') as string;
+    const companyAreaId = companyAreaIdParam ? parseInt(companyAreaIdParam) : undefined;
 
     if (!file || !companyId || !costCenterId || !expenseTypeId) {
       return NextResponse.json(
@@ -66,7 +68,8 @@ export async function POST(request: NextRequest) {
       costCenterId,
       expenseTypeId,
       budgetPeriodId,
-      user.id
+      user.id,
+      companyAreaId
     );
 
     return NextResponse.json(expense, { status: 201 });

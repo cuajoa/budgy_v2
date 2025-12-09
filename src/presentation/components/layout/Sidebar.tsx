@@ -33,6 +33,7 @@ const menuItems = [
     children: [
       { title: 'Empresas', href: '/config/companies' },
       { title: 'Centros de Costo', href: '/config/cost-centers' },
+      { title: 'Áreas de Compañía', href: '/config/company-areas' },
       { title: 'Proveedores', href: '/config/providers' },
       { title: 'Tipos de Gasto', href: '/config/expense-types' },
       { title: 'Períodos de Presupuesto', href: '/config/budget-periods' },

@@ -52,31 +52,40 @@ export function Header() {
           <span className="sr-only">Cambiar tema</span>
         </Button>
 
-        {/* Menú de usuario */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              <span className="hidden md:inline-block">
-                {userName}
-              </span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">
+        {/* Menú de usuario - Renderizar solo después del mount para evitar errores de hidratación */}
+        {mounted ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                <span className="hidden md:inline-block">
                   {userName}
-                </p>
-                {userEmail && (
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {userEmail}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">
+                    {userName}
                   </p>
-                )}
-              </div>
-            </DropdownMenuLabel>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                  {userEmail && (
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {userEmail}
+                    </p>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button variant="ghost" className="flex items-center gap-2" disabled>
+            <User className="h-5 w-5" />
+            <span className="hidden md:inline-block">
+              {userName}
+            </span>
+          </Button>
+        )}
       </div>
     </header>
   );

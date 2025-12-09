@@ -21,7 +21,8 @@ export class ProcessInvoicePDFUseCase {
     costCenterId: number,
     expenseTypeId: number,
     budgetPeriodId: number | null,
-    userId: string
+    userId: string,
+    companyAreaId?: number
   ): Promise<Expense> {
     // Si no se proporciona budgetPeriodId, obtener el período activo
     let finalBudgetPeriodId = budgetPeriodId;
@@ -116,6 +117,7 @@ export class ProcessInvoicePDFUseCase {
       costCenterId,
       expenseTypeId,
       budgetPeriodId: finalBudgetPeriodId,
+      companyAreaId,
       invoiceNumber: extractedData.invoiceNumber,
       invoiceDate,
       amountArs,

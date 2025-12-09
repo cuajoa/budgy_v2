@@ -25,20 +25,63 @@ async function runMigrations() {
       '001_create_schema.sql',
       '002_insert_initial_data.sql',
       '003_create_stored_procedures.sql',
+      '004_add_company_areas.sql',
     ];
 
     for (const file of migrationFiles) {
       const filePath = join(migrationDir, file);
-      const sql = readFileSync(filePath, 'utf-8');
       
-      console.log(`Ejecutando migración: ${file}`);
-      await pool.query(sql);
-      console.log(`Migración ${file} completada`);
+      // Verificar si el archivo existe
+      try {
+        const sql = readFileSync(filePath, 'utf-8');
+        
+        console.log(`\n📄 Ejecutando migración: ${file}`);
+        
+        // Ejecutar el SQL completo, pero manejar errores de objetos existentes
+        try {
+          await pool.query(sql);
+          console.log(`✓ Migración ${file} completada`);
+        } catch (error) {
+          const errorMessage = error.message || '';
+          
+          // Errores que podemos ignorar (objetos que ya existen)
+          const ignorableErrors = [
+            'already exists',
+            'duplicate',
+            'relation.*already exists',
+            'constraint.*already exists',
+            'index.*already exists',
+            'trigger.*already exists',
+            'function.*already exists',
+          ];
+          
+          const isIgnorable = ignorableErrors.some(pattern => {
+            const regex = new RegExp(pattern, 'i');
+            return regex.test(errorMessage);
+          });
+          
+          if (isIgnorable) {
+            console.log(`⚠️  Algunos objetos ya existen en ${file}, continuando...`);
+            console.log(`   Detalle: ${errorMessage.substring(0, 100)}`);
+          } else {
+            // Si es un error crítico, lanzarlo
+            console.error(`❌ Error crítico en migración ${file}:`);
+            console.error(`   ${errorMessage}`);
+            throw error;
+          }
+        }
+      } catch (fileError) {
+        if (fileError.code === 'ENOENT') {
+          console.log(`⚠️  Archivo ${file} no encontrado, omitiendo...`);
+          continue;
+        }
+        throw fileError;
+      }
     }
     
-    console.log('Todas las migraciones completadas exitosamente');
+    console.log('\n✅ Todas las migraciones procesadas exitosamente');
   } catch (error) {
-    console.error('Error ejecutando migraciones:', error);
+    console.error('\n❌ Error ejecutando migraciones:', error.message);
     throw error;
   }
 }

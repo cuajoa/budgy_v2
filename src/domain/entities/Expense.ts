@@ -5,6 +5,7 @@ export interface Expense {
   costCenterId: number;
   expenseTypeId: number;
   budgetPeriodId: number;
+  companyAreaId?: number; // Área asociada de la compañía (opcional)
   invoiceNumber?: string;
   invoiceDate: Date;
   amountArs: number;
@@ -24,6 +25,7 @@ export interface CreateExpenseDTO {
   costCenterId: number;
   expenseTypeId: number;
   budgetPeriodId: number;
+  companyAreaId?: number; // Área asociada de la compañía (opcional)
   invoiceNumber?: string;
   invoiceDate: Date;
   amountArs: number;
@@ -39,6 +41,7 @@ export interface UpdateExpenseDTO {
   costCenterId?: number;
   expenseTypeId?: number;
   budgetPeriodId?: number;
+  companyAreaId?: number; // Área asociada de la compañía (opcional)
   invoiceNumber?: string;
   invoiceDate?: Date;
   amountArs?: number;
