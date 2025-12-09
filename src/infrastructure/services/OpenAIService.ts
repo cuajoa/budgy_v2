@@ -62,12 +62,18 @@ Las facturas argentinas tienen DOS secciones principales:
 
 INSTRUCCIONES CRÍTICAS PARA CADA CAMPO:
 
-**providerName y providerTaxId:**
+**providerName y providerTaxId (CRÍTICO - LEER CON ATENCIÓN):**
 - El proveedor es QUIEN EMITIÓ la factura, NO el cliente
 - Busca la PRIMERA sección que contiene "Razón Social:" (sin "Apellido y Nombre" antes)
 - El CUIT del proveedor está en la MISMA sección que el "Razón Social:" del proveedor
-- NO uses los datos de la sección del cliente (que puede tener "LATIN SECURITIES" o "DELTA")
-- El proveedor generalmente aparece ANTES en el documento que el cliente
+- El proveedor generalmente aparece ANTES en el documento que el cliente (en la parte superior izquierda)
+- **EXCLUSIÓN ABSOLUTA:** Los siguientes nombres NUNCA son proveedores, SIEMPRE son clientes:
+  * "LATIN SECURITIES" (en cualquier variación: "LATIN SECURITIES S. A.", "LATIN SECURITIES S.A.", etc.)
+  * "DELTA ASSET MANAGEMENT" (en cualquier variación)
+  * "DELTA" (si aparece solo)
+- Si encuentras cualquiera de estos nombres en el campo "Razón Social:", IGNÓRALO completamente - ese es el CLIENTE, NO el proveedor
+- El proveedor REAL está en la PRIMERA sección con "Razón Social:", generalmente en la parte superior izquierda del documento
+- Si la factura tiene dos secciones con "Razón Social:", usa SOLO la PRIMERA (la del proveedor), NUNCA la segunda (que es el cliente)
 
 **invoiceNumber:**
 - Busca el número de factura cerca de etiquetas como: "Factura N°", "Comp. Nro:", "Número de Factura", "Nro Factura", etc.
@@ -104,8 +110,8 @@ INSTRUCCIONES CRÍTICAS PARA CADA CAMPO:
 
 Extrae la siguiente información en formato JSON:
 {
-  "providerName": "nombre del proveedor extraído del campo 'Razón Social:' de la SECCIÓN DEL PROVEEDOR (quien emitió la factura), NO del cliente. Usa el valor exacto encontrado.",
-  "providerTaxId": "CUIT del proveedor extraído del campo 'CUIT:' o 'C.U.I.T.:' de la MISMA sección del proveedor (solo números, sin guiones ni espacios)",
+  "providerName": "nombre del proveedor extraído del campo 'Razón Social:' de la PRIMERA SECCIÓN (quien emitió la factura). DEBE ser la primera sección con 'Razón Social:' que encuentres. NUNCA uses 'LATIN SECURITIES' ni 'DELTA ASSET MANAGEMENT' - esos son siempre clientes. Usa el valor exacto encontrado.",
+  "providerTaxId": "CUIT del proveedor extraído del campo 'CUIT:' o 'C.U.I.T.:' de la MISMA PRIMERA sección del proveedor (solo números, sin guiones ni espacios). NUNCA uses el CUIT de la sección que contiene 'LATIN SECURITIES' o 'DELTA ASSET MANAGEMENT'.",
   "invoiceNumber": "número de factura encontrado cerca de etiquetas como 'Factura N°', 'Comp. Nro:', etc.",
   "invoiceDate": "fecha de emisión de la factura en formato YYYY-MM-DD. DEBE estar cerca del número de factura. EXCLUYE 'INICIO DE ACTIVIDADES' y otras fechas administrativas.",
   "amount": número del monto TOTAL de la factura (buscar específicamente el label 'TOTAL'). Solo el número, sin símbolos, sin puntos de miles, usar punto como decimal si aplica (ej: 512528.32 o 353.47)",

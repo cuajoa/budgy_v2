@@ -5,6 +5,7 @@ import { Provider, CreateProviderDTO, UpdateProviderDTO } from '@/domain/entitie
 export interface IProviderRepository {
   findAll(): Promise<Provider[]>;
   findById(id: number): Promise<Provider | null>;
+  findByTaxId(taxId: string): Promise<Provider | null>;
   create(data: CreateProviderDTO): Promise<Provider>;
   update(id: number, data: UpdateProviderDTO): Promise<Provider>;
   delete(id: number): Promise<void>;
@@ -28,6 +29,16 @@ export class ProviderRepository implements IProviderRepository {
     const result = await this.pool.query(
       'SELECT id, name, tax_id, contact_email, contact_phone, created_at, updated_at, deleted_at FROM providers WHERE id = $1 AND deleted_at IS NULL',
       [id]
+    );
+    return result.rows.length > 0 ? this.mapRowToProvider(result.rows[0]) : null;
+  }
+
+  async findByTaxId(taxId: string): Promise<Provider | null> {
+    // Normalizar el taxId removiendo guiones y espacios para comparar
+    const normalizedTaxId = taxId.replace(/\D/g, '');
+    const result = await this.pool.query(
+      'SELECT id, name, tax_id, contact_email, contact_phone, created_at, updated_at, deleted_at FROM providers WHERE REPLACE(REPLACE(tax_id, \'-\', \'\'), \' \', \'\') = $1 AND deleted_at IS NULL',
+      [normalizedTaxId]
     );
     return result.rows.length > 0 ? this.mapRowToProvider(result.rows[0]) : null;
   }

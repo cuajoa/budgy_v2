@@ -5,12 +5,13 @@ import { ExchangeRateService } from '@/infrastructure/services/ExchangeRateServi
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getAuthUser(request);
+    const { id } = await params;
     const expenseRepository = new ExpenseRepository();
-    const expense = await expenseRepository.findById(parseInt(params.id));
+    const expense = await expenseRepository.findById(parseInt(id));
 
     if (!expense) {
       return NextResponse.json({ error: 'Gasto no encontrado' }, { status: 404 });
@@ -25,17 +26,18 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getAuthUser(request);
+    const { id } = await params;
     const body = await request.json();
     const expenseRepository = new ExpenseRepository();
     const exchangeRateService = new ExchangeRateService();
 
     // Si se actualiza amountArs o invoiceDate, recalcular amountUsd y exchangeRate
     if (body.amountArs !== undefined || body.invoiceDate !== undefined) {
-      const existingExpense = await expenseRepository.findById(parseInt(params.id));
+      const existingExpense = await expenseRepository.findById(parseInt(id));
       if (!existingExpense) {
         return NextResponse.json({ error: 'Gasto no encontrado' }, { status: 404 });
       }
@@ -61,7 +63,7 @@ export async function PUT(
       body.exchangeRate = exchangeRate;
     }
 
-    const expense = await expenseRepository.update(parseInt(params.id), body);
+    const expense = await expenseRepository.update(parseInt(id), body);
 
     return NextResponse.json(expense);
   } catch (error) {
@@ -75,12 +77,13 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getAuthUser(request);
+    const { id } = await params;
     const expenseRepository = new ExpenseRepository();
-    await expenseRepository.delete(parseInt(params.id));
+    await expenseRepository.delete(parseInt(id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

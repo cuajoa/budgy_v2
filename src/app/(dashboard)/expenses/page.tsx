@@ -201,32 +201,57 @@ export default function ExpensesPage() {
 
   const hasActiveFilters = filters.companyId || filters.costCenterId;
 
-  const handleEdit = (expense: Expense) => {
-    setEditingExpense(expense);
-    setEditFormData({
-      providerId: expense.providerId.toString(),
-      costCenterId: expense.costCenterId.toString(),
-      expenseTypeId: expense.expenseTypeId.toString(),
-      budgetPeriodId: expense.budgetPeriodId.toString(),
-      companyAreaId: expense.companyAreaId?.toString() || '',
-      invoiceNumber: expense.invoiceNumber || '',
-      invoiceDate: expense.invoiceDate.split('T')[0], // YYYY-MM-DD
-      amountArs: expense.amountArs.toString(),
-      description: expense.description || '',
-    });
-    // Cargar cost centers y areas para la compañía del gasto
-    fetch(`/api/cost-centers?companyId=${expense.companyId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        const allCostCenters = [...costCenters, ...data.filter((cc: CostCenter) => !costCenters.find(c => c.id === cc.id))];
-        setCostCenters(allCostCenters);
+  const handleEdit = async (expense: Expense) => {
+    try {
+      // Hacer GET al gasto individual para obtener datos actualizados
+      const response = await fetch(`/api/expenses/${expense.id}`);
+      if (!response.ok) {
+        throw new Error('Error al cargar el gasto');
+      }
+      const expenseData = await response.json();
+
+      setEditingExpense(expenseData);
+      setEditFormData({
+        providerId: expenseData.providerId.toString(),
+        costCenterId: expenseData.costCenterId.toString(),
+        expenseTypeId: expenseData.expenseTypeId.toString(),
+        budgetPeriodId: expenseData.budgetPeriodId.toString(),
+        companyAreaId: expenseData.companyAreaId?.toString() || '',
+        invoiceNumber: expenseData.invoiceNumber || '',
+        invoiceDate: expenseData.invoiceDate.split('T')[0], // YYYY-MM-DD
+        amountArs: expenseData.amountArs.toString(),
+        description: expenseData.description || '',
       });
-    fetch(`/api/company-areas?companyId=${expense.companyId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        const allAreas = [...companyAreas, ...data.filter((a: CompanyArea) => !companyAreas.find(area => area.id === a.id))];
-        setCompanyAreas(allAreas);
-      });
+
+      // Cargar cost centers y areas para la compañía del gasto
+      const [costCentersRes, areasRes] = await Promise.all([
+        fetch(`/api/cost-centers?companyId=${expenseData.companyId}`),
+        fetch(`/api/company-areas?companyId=${expenseData.companyId}`),
+      ]);
+
+      const [costCentersData, areasData] = await Promise.all([
+        costCentersRes.json(),
+        areasRes.json(),
+      ]);
+
+      // Actualizar cost centers y areas
+      const allCostCenters = [...costCenters, ...costCentersData.filter((cc: CostCenter) => !costCenters.find(c => c.id === cc.id))];
+      setCostCenters(allCostCenters);
+
+      const allAreas = [...companyAreas, ...areasData.filter((a: CompanyArea) => !companyAreas.find(area => area.id === a.id))];
+      setCompanyAreas(allAreas);
+
+      // Hacer scroll al formulario de edición después de un pequeño delay
+      setTimeout(() => {
+        const editCard = document.getElementById('edit-expense-card');
+        if (editCard) {
+          editCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error cargando gasto:', error);
+      alert('Error al cargar el gasto para editar');
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -547,7 +572,7 @@ export default function ExpensesPage() {
       </Card>
 
       {editingExpense && (
-        <Card>
+        <Card id="edit-expense-card">
           <CardHeader>
             <CardTitle>Editar Gasto</CardTitle>
           </CardHeader>
