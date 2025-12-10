@@ -17,7 +17,14 @@ export async function GET(
       return NextResponse.json({ error: 'Gasto no encontrado' }, { status: 404 });
     }
 
-    return NextResponse.json(expense);
+    // Enriquecer con compañías adicionales
+    const additionalCompanyIds = await expenseRepository.getExpenseCompanies(expense.id);
+    const expenseWithCompanies = {
+      ...expense,
+      additionalCompanyIds: additionalCompanyIds.length > 0 ? additionalCompanyIds : undefined,
+    };
+
+    return NextResponse.json(expenseWithCompanies);
   } catch (error) {
     console.error('Error obteniendo gasto:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
@@ -65,7 +72,28 @@ export async function PUT(
 
     const expense = await expenseRepository.update(parseInt(id), body);
 
-    return NextResponse.json(expense);
+    // Actualizar compañías adicionales si se proporcionan
+    if (body.additionalCompanyIds !== undefined) {
+      const expenseId = parseInt(id);
+      // Eliminar todas las relaciones existentes
+      await expenseRepository.removeExpenseCompanies(expenseId);
+      
+      // Agregar nuevas relaciones si hay compañías adicionales
+      if (body.additionalCompanyIds && body.additionalCompanyIds.length > 0) {
+        for (const companyId of body.additionalCompanyIds) {
+          await expenseRepository.addExpenseCompany(expenseId, companyId);
+        }
+      }
+    }
+
+    // Obtener el gasto actualizado con compañías adicionales
+    const additionalCompanyIds = await expenseRepository.getExpenseCompanies(parseInt(id));
+    const expenseWithCompanies = {
+      ...expense,
+      additionalCompanyIds: additionalCompanyIds.length > 0 ? additionalCompanyIds : undefined,
+    };
+
+    return NextResponse.json(expenseWithCompanies);
   } catch (error) {
     console.error('Error actualizando gasto:', error);
     return NextResponse.json(

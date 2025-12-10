@@ -26,6 +26,7 @@ export interface CreateExpenseDTO {
   expenseTypeId: number;
   budgetPeriodId: number;
   companyAreaId?: number; // Área asociada de la compañía (opcional)
+  additionalCompanyIds?: number[]; // IDs de compañías adicionales para prorrateo
   invoiceNumber?: string;
   invoiceDate: Date;
   amountArs: number;

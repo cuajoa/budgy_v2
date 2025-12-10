@@ -29,6 +29,10 @@ export async function POST(request: NextRequest) {
     const budgetPeriodId = budgetPeriodIdParam ? parseInt(budgetPeriodIdParam) : null;
     const companyAreaIdParam = formData.get('companyAreaId') as string;
     const companyAreaId = companyAreaIdParam ? parseInt(companyAreaIdParam) : undefined;
+    const additionalCompanyIdsParam = formData.get('additionalCompanyIds') as string;
+    const additionalCompanyIds = additionalCompanyIdsParam 
+      ? JSON.parse(additionalCompanyIdsParam) as number[]
+      : undefined;
 
     if (!file || !companyId || !costCenterId || !expenseTypeId) {
       return NextResponse.json(
@@ -54,6 +58,56 @@ export async function POST(request: NextRequest) {
     const openAIService = new OpenAIService();
     const exchangeRateService = new ExchangeRateService();
 
+    // Primero extraer datos para validar duplicados
+    const providers = await providerRepository.findAll();
+    const providerNames = providers.map((p) => p.name);
+    const extractedData = await openAIService.extractInvoiceData(buffer, providerNames);
+
+    // Buscar proveedor
+    let providerId: number | null = null;
+    if (extractedData.providerName) {
+      let existingProvider = extractedData.providerTaxId
+        ? await providerRepository.findByTaxId(extractedData.providerTaxId.replace(/\D/g, ''))
+        : null;
+
+      if (!existingProvider) {
+        existingProvider = providers.find(
+          (p) => p.name.toLowerCase() === extractedData.providerName!.toLowerCase()
+        ) || null;
+      }
+
+      if (existingProvider) {
+        providerId = existingProvider.id;
+      }
+    }
+
+    // Validar si la factura ya existe
+    if (extractedData.invoiceNumber && providerId) {
+      // Normalizar el número de factura antes de comparar
+      const normalizedInvoiceNumber = extractedData.invoiceNumber.replace(/[\s-]/g, '').toUpperCase().trim();
+      const existingExpense = await expenseRepository.findByInvoiceNumberAndProvider(
+        normalizedInvoiceNumber,
+        providerId
+      );
+
+      if (existingExpense) {
+        return NextResponse.json(
+          {
+            error: 'Esta factura ya fue ingresada anteriormente',
+            duplicate: true,
+            existingExpenseId: existingExpense.id,
+            invoiceNumber: extractedData.invoiceNumber,
+            providerName: extractedData.providerName,
+          },
+          { status: 409 } // Conflict
+        );
+      }
+    }
+
+    if (!user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
     const processInvoiceUseCase = new ProcessInvoicePDFUseCase(
       expenseRepository,
       providerRepository,
@@ -69,7 +123,8 @@ export async function POST(request: NextRequest) {
       expenseTypeId,
       budgetPeriodId,
       user.id,
-      companyAreaId
+      companyAreaId,
+      additionalCompanyIds
     );
 
     return NextResponse.json(expense, { status: 201 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/presentation/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format, parseISO } from 'date-fns';
 
 interface Expense {
@@ -11,6 +11,7 @@ interface Expense {
   costCenterId: number;
   invoiceDate: string;
   amountUsd: number;
+  additionalCompanyIds?: number[]; // IDs de compañías adicionales para prorrateo
 }
 
 interface Company {
@@ -46,12 +47,30 @@ export default function DashboardPage() {
         ]);
 
         // Crear mapas para búsqueda rápida
-        const companiesMap = new Map(companies.map((c: Company) => [c.id, c.name]));
-        const costCentersMap = new Map(costCenters.map((cc: CostCenter) => [cc.id, cc.name]));
+        const companiesMap = new Map<number, string>(companies.map((c: Company) => [c.id, c.name]));
+        const costCentersMap = new Map<number, string>(costCenters.map((cc: CostCenter) => [cc.id, cc.name]));
 
         // Agrupar por mes y compañía
         const byMonthAndCompany: Record<string, Record<string, number>> = {};
         const byMonthAndCostCenter: Record<string, Record<string, number>> = {};
+
+        // Helper para agregar valor a compañía del mes
+        const addToMonthCompany = (monthKey: string, companyName: string, amount: number): void => {
+          if (!byMonthAndCompany[monthKey]) {
+            byMonthAndCompany[monthKey] = {} as Record<string, number>;
+          }
+          const monthData = byMonthAndCompany[monthKey] as Record<string, number>;
+          monthData[companyName] = (monthData[companyName] || 0) + amount;
+        };
+
+        // Helper para agregar valor a centro de costo del mes
+        const addToMonthCostCenter = (monthKey: string, costCenterName: string, amount: number): void => {
+          if (!byMonthAndCostCenter[monthKey]) {
+            byMonthAndCostCenter[monthKey] = {} as Record<string, number>;
+          }
+          const monthData = byMonthAndCostCenter[monthKey] as Record<string, number>;
+          monthData[costCenterName] = (monthData[costCenterName] || 0) + amount;
+        };
 
         // Crear un mapa de fechas para ordenamiento
         const monthDateMap = new Map<string, Date>();
@@ -67,22 +86,35 @@ export default function DashboardPage() {
             monthDateMap.set(monthKey, date);
           }
 
-          const companyName = companiesMap.get(expense.companyId) || `Compañía ${expense.companyId}`;
-          const costCenterName = costCentersMap.get(expense.costCenterId) || `Centro ${expense.costCenterId}`;
+          const companyNameValue = companiesMap.get(expense.companyId);
+          const companyName: string = companyNameValue ? String(companyNameValue) : `Compañía ${expense.companyId}`;
+          const costCenterNameValue = costCentersMap.get(expense.costCenterId);
+          const costCenterName: string = costCenterNameValue ? String(costCenterNameValue) : `Centro ${expense.costCenterId}`;
 
-          // Agrupar por compañía
-          if (!byMonthAndCompany[monthKey]) {
-            byMonthAndCompany[monthKey] = {};
-          }
-          byMonthAndCompany[monthKey][companyName] =
-            (byMonthAndCompany[monthKey][companyName] || 0) + expense.amountUsd;
+          // Calcular compañías para prorrateo
+          // Si hay compañías adicionales, incluir también la compañía principal
+          const companiesToProrate = expense.additionalCompanyIds && expense.additionalCompanyIds.length > 0
+            ? [expense.companyId, ...expense.additionalCompanyIds]
+            : [expense.companyId];
+          
+          // Calcular el monto prorrateado por compañía
+          const proratedAmount = expense.amountUsd / companiesToProrate.length;
 
-          // Agrupar por centro de costo
-          if (!byMonthAndCostCenter[monthKey]) {
-            byMonthAndCostCenter[monthKey] = {};
-          }
-          byMonthAndCostCenter[monthKey][costCenterName] =
-            (byMonthAndCostCenter[monthKey][costCenterName] || 0) + expense.amountUsd;
+          // Agrupar por compañía con prorrateo
+          companiesToProrate.forEach(companyId => {
+            const companyName = companiesMap.get(companyId);
+            const proratedCompanyName: string = companyName ? String(companyName) : `Compañía ${companyId}`;
+            addToMonthCompany(monthKey, proratedCompanyName, proratedAmount);
+          });
+
+          // Agrupar por centro de costo (sin prorrateo, se mantiene el monto completo)
+          addToMonthCostCenter(monthKey, costCenterName, expense.amountUsd);
+        });
+
+        // Obtener todas las compañías únicas de todos los meses
+        const allCompanies = new Set<string>();
+        Object.values(byMonthAndCompany).forEach(monthData => {
+          Object.keys(monthData).forEach(company => allCompanies.add(company));
         });
 
         // Obtener meses y ordenarlos por fecha (ascendente)
@@ -94,13 +126,18 @@ export default function DashboardPage() {
         });
 
         // Transformar datos para gráficos en orden ascendente
+        // Asegurar que todas las compañías aparezcan en todos los meses
         const companyChartData = sortedMonths.map(monthKey => {
           const date = monthDateMap.get(monthKey) || new Date(monthKey);
           const monthDisplay = format(date, 'MMM yyyy').toLowerCase();
           const data: any = { month: monthDisplay };
-          Object.keys(byMonthAndCompany[monthKey]).forEach(company => {
-            data[company] = byMonthAndCompany[monthKey][company];
+          
+          // Incluir todas las compañías, con 0 si no tienen gastos en ese mes
+          const monthCompanyData = byMonthAndCompany[monthKey] || ({} as Record<string, number>);
+          allCompanies.forEach(company => {
+            data[company] = monthCompanyData[company] || 0;
           });
+          
           return data;
         });
 
@@ -108,8 +145,9 @@ export default function DashboardPage() {
           const date = monthDateMap.get(monthKey) || new Date(monthKey);
           const monthDisplay = format(date, 'MMM yyyy').toLowerCase();
           const data: any = { month: monthDisplay };
-          Object.keys(byMonthAndCostCenter[monthKey]).forEach(center => {
-            data[center] = byMonthAndCostCenter[monthKey][center];
+          const monthCostCenterData = byMonthAndCostCenter[monthKey] || ({} as Record<string, number>);
+          Object.keys(monthCostCenterData).forEach(center => {
+            data[center] = monthCostCenterData[center];
           });
           return data;
         });
@@ -126,6 +164,21 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
+  // Formateador para valores en USD
+  const formatUsd = (value: number) => {
+    return `$${value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Formateador para el eje Y
+  const formatYAxis = (tickItem: number) => {
+    return `$${(tickItem / 1000).toFixed(0)}k`;
+  };
+
+  // Formateador para tooltips
+  const formatTooltip = (value: number, name: string) => {
+    return [`${formatUsd(value)} USD`, name];
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -139,7 +192,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground">
-          Evolución de gastos del último período
+          Evolución de gastos del último período (en USD)
         </p>
       </div>
 
@@ -159,8 +212,11 @@ export default function DashboardPage() {
                 <BarChart data={expenseData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip formatter={(value: number) => `$${value.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`} />
+                  <YAxis 
+                    tickFormatter={formatYAxis}
+                    label={{ value: 'Monto (USD)', angle: -90, position: 'insideLeft' }}
+                  />
+                  <Tooltip formatter={formatTooltip} />
                   <Legend />
                   {expenseData.length > 0 && Object.keys(expenseData[0]).filter(k => k !== 'month').map((company, index) => (
                     <Bar key={company} dataKey={company} fill={`hsl(${index * 60}, 70%, 50%)`} />
@@ -186,8 +242,11 @@ export default function DashboardPage() {
                 <BarChart data={costCenterData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip formatter={(value: number) => `$${value.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`} />
+                  <YAxis 
+                    tickFormatter={formatYAxis}
+                    label={{ value: 'Monto (USD)', angle: -90, position: 'insideLeft' }}
+                  />
+                  <Tooltip formatter={formatTooltip} />
                   <Legend />
                   {costCenterData.length > 0 && Object.keys(costCenterData[0]).filter(k => k !== 'month').map((center, index) => (
                     <Bar key={center} dataKey={center} fill={`hsl(${index * 40 + 180}, 70%, 50%)`} />
@@ -198,6 +257,45 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Gráfico de líneas por compañía */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Evolución de Gastos por Compañía</CardTitle>
+          <CardDescription>Evolución mensual en USD - Vista de líneas</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {expenseData.length === 0 ? (
+            <div className="flex items-center justify-center h-64">
+              <p className="text-muted-foreground">No hay datos para mostrar</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={400}>
+              <LineChart data={expenseData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis 
+                  tickFormatter={formatYAxis}
+                  label={{ value: 'Monto (USD)', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip formatter={formatTooltip} />
+                <Legend />
+                {expenseData.length > 0 && Object.keys(expenseData[0]).filter(k => k !== 'month').map((company, index) => (
+                  <Line 
+                    key={company} 
+                    type="monotone" 
+                    dataKey={company} 
+                    stroke={`hsl(${index * 60}, 70%, 50%)`}
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

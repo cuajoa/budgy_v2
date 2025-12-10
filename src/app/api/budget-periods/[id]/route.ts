@@ -3,7 +3,7 @@ import { BudgetPeriodRepository } from '@/infrastructure/repositories/BudgetPeri
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -16,9 +16,10 @@ export async function PUT(
     //   return NextResponse.json({ error: 'No tiene permisos para editar períodos' }, { status: 403 });
     // }
 
+    const { id } = await params;
     const body = await request.json();
     const budgetPeriodRepository = new BudgetPeriodRepository();
-    const period = await budgetPeriodRepository.update(parseInt(params.id), body);
+    const period = await budgetPeriodRepository.update(parseInt(id), body);
 
     return NextResponse.json(period);
   } catch (error) {
@@ -29,7 +30,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -42,8 +43,9 @@ export async function DELETE(
     //   return NextResponse.json({ error: 'No tiene permisos para eliminar períodos' }, { status: 403 });
     // }
 
+    const { id } = await params;
     const budgetPeriodRepository = new BudgetPeriodRepository();
-    await budgetPeriodRepository.delete(parseInt(params.id));
+    await budgetPeriodRepository.delete(parseInt(id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

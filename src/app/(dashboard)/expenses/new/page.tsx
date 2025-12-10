@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/presentation/components/ui/card';
 import { Button } from '@/presentation/components/ui/button';
-import { Upload, FileText, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Upload, FileText, CheckCircle2, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Company {
@@ -52,6 +52,9 @@ interface PreviewData {
   description: string;
   budgetPeriodId: number | null;
   budgetPeriodDescription: string | null;
+  isDuplicate?: boolean;
+  existingExpenseId?: number | null;
+  existingExpenseDate?: string | null;
 }
 
 export default function NewExpensePage() {
@@ -60,6 +63,7 @@ export default function NewExpensePage() {
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>([]);
@@ -72,6 +76,7 @@ export default function NewExpensePage() {
     expenseTypeId: '',
     companyAreaId: '',
   });
+  const [additionalCompanyIds, setAdditionalCompanyIds] = useState<number[]>([]);
 
   useEffect(() => {
     async function loadData() {
@@ -120,10 +125,92 @@ export default function NewExpensePage() {
     }
   }, [formData.companyId]);
 
+  // Procesar automáticamente cuando se carga un archivo (solo lectura/extractión de datos)
+  useEffect(() => {
+    const shouldAutoProcess = 
+      file && 
+      !processing && 
+      !previewData;
+
+    if (shouldAutoProcess) {
+      // Pequeño delay para asegurar que el estado se haya actualizado
+      const timer = setTimeout(async () => {
+        if (!file) return;
+        
+        setProcessing(true);
+        try {
+          const formDataToSend = new FormData();
+          formDataToSend.append('file', file);
+
+          const response = await fetch('/api/expenses/upload/preview', {
+            method: 'POST',
+            body: formDataToSend,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setPreviewData(data);
+            // Reset compañías adicionales cuando se procesa un nuevo archivo
+            setAdditionalCompanyIds([]);
+          } else {
+            const error = await response.json();
+            alert(`Error: ${error.error}`);
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          alert('Error al procesar la factura');
+        } finally {
+          setProcessing(false);
+        }
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [file, processing, previewData]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setPreviewData(null); // Reset preview cuando se cambia el archivo
+      const selectedFile = e.target.files[0];
+      if (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf')) {
+        setFile(selectedFile);
+        setPreviewData(null); // Reset preview cuando se cambia el archivo
+      } else {
+        alert('Por favor selecciona un archivo PDF');
+      }
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (droppedFiles && droppedFiles.length > 0) {
+      const droppedFile = droppedFiles[0];
+      if (droppedFile.type === 'application/pdf' || droppedFile.name.toLowerCase().endsWith('.pdf')) {
+        setFile(droppedFile);
+        setPreviewData(null); // Reset preview cuando se cambia el archivo
+      } else {
+        alert('Por favor arrastra un archivo PDF');
+      }
     }
   };
 
@@ -133,6 +220,7 @@ export default function NewExpensePage() {
       return;
     }
 
+    // No requerir campos de clasificación para procesar la lectura de la factura
     setProcessing(true);
     try {
       const formDataToSend = new FormData();
@@ -146,6 +234,8 @@ export default function NewExpensePage() {
       if (response.ok) {
         const data = await response.json();
         setPreviewData(data);
+        // Reset compañías adicionales cuando se procesa un nuevo archivo
+        setAdditionalCompanyIds([]);
       } else {
         const error = await response.json();
         alert(`Error: ${error.error}`);
@@ -207,6 +297,7 @@ export default function NewExpensePage() {
           expenseTypeId: parseInt(formData.expenseTypeId),
           budgetPeriodId: previewData.budgetPeriodId,
           companyAreaId: formData.companyAreaId ? parseInt(formData.companyAreaId) : undefined,
+          additionalCompanyIds: additionalCompanyIds.length > 0 ? additionalCompanyIds : undefined,
           invoiceNumber: previewData.invoiceNumber || undefined,
           invoiceDate: previewData.invoiceDate,
           amountArs: previewData.amountArs,
@@ -220,7 +311,11 @@ export default function NewExpensePage() {
         router.push('/expenses');
       } else {
         const error = await expenseResponse.json();
-        alert(`Error: ${error.error}`);
+        if (error.duplicate) {
+          alert(`Esta factura ya fue ingresada anteriormente.\n\nNúmero de factura: ${error.invoiceNumber}\nProveedor: ${error.providerName}\n\nID del gasto existente: ${error.existingExpenseId}`);
+        } else {
+          alert(`Error: ${error.error}`);
+        }
       }
     } catch (error) {
       console.error('Error:', error);
@@ -257,10 +352,28 @@ export default function NewExpensePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {file && !previewData && processing && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Procesando factura automáticamente...
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Archivo PDF</label>
-                <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer border-muted-foreground/25 hover:bg-accent">
+                <div 
+                  className="flex items-center justify-center w-full"
+                  onDragEnter={handleDragEnter}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
+                  <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                    isDragging 
+                      ? 'border-primary bg-primary/10' 
+                      : 'border-muted-foreground/25 hover:bg-accent'
+                  }`}>
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       {file ? (
                         <>
@@ -280,7 +393,7 @@ export default function NewExpensePage() {
                     <input
                       type="file"
                       className="hidden"
-                      accept=".pdf"
+                      accept=".pdf,application/pdf"
                       onChange={handleFileChange}
                     />
                   </label>
@@ -299,6 +412,8 @@ export default function NewExpensePage() {
                   type="button"
                   onClick={handleProcessFile}
                   disabled={processing || !file}
+                  variant={processing ? "secondary" : "default"}
+                  title={processing ? "Procesando..." : "Procesar factura"}
                 >
                   {processing ? (
                     <>
@@ -326,6 +441,31 @@ export default function NewExpensePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {previewData.isDuplicate && (
+                <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
+                        Factura Duplicada
+                      </h4>
+                      <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                        Esta factura ya fue ingresada anteriormente.
+                        {previewData.existingExpenseDate && (
+                          <span className="block mt-1">
+                            Fecha de ingreso: {format(new Date(previewData.existingExpenseDate), 'dd/MM/yyyy')}
+                          </span>
+                        )}
+                        {previewData.existingExpenseId && (
+                          <span className="block mt-1">
+                            ID del gasto existente: {previewData.existingExpenseId}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="space-y-6">
                 {/* Información del Proveedor */}
                 <div className="space-y-4">
@@ -522,6 +662,46 @@ export default function NewExpensePage() {
                       </select>
                     </div>
                   </div>
+
+                  {/* Compañías adicionales para prorrateo */}
+                  <div className="space-y-2 mt-4">
+                    <label className="text-sm font-medium">Aplica a otras compañías (Prorrateo)</label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Selecciona las compañías adicionales a las que aplica este gasto. El monto se prorrateará equitativamente entre la compañía seleccionada y las adicionales.
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {companies
+                        .filter((c) => !formData.companyId || c.id !== parseInt(formData.companyId))
+                        .map((company) => (
+                          <label
+                            key={company.id}
+                            className="flex items-center space-x-2 p-2 rounded-md border border-input hover:bg-accent cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={additionalCompanyIds.includes(company.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setAdditionalCompanyIds([...additionalCompanyIds, company.id]);
+                                } else {
+                                  setAdditionalCompanyIds(additionalCompanyIds.filter((id) => id !== company.id));
+                                }
+                              }}
+                              disabled={!formData.companyId}
+                              className="rounded border-gray-300"
+                            />
+                            <span className="text-sm">{company.name}</span>
+                          </label>
+                        ))}
+                    </div>
+                    {additionalCompanyIds.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        El gasto se prorrateará entre {formData.companyId ? companies.find(c => c.id === parseInt(formData.companyId))?.name : 'la compañía seleccionada'} y {additionalCompanyIds.length} compañía(s) adicional(es). 
+                        Total: {additionalCompanyIds.length + 1} compañía(s). 
+                        Monto por compañía: {formatCurrency(previewData.amountUsd / (additionalCompanyIds.length + 1), 'USD')}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-4 pt-4 border-t">
@@ -538,13 +718,16 @@ export default function NewExpensePage() {
                   <Button
                     type="button"
                     onClick={handleSave}
-                    disabled={saving || !formData.companyId || !formData.costCenterId || !formData.expenseTypeId}
+                    disabled={saving || !formData.companyId || !formData.costCenterId || !formData.expenseTypeId || previewData.isDuplicate}
+                    variant={previewData.isDuplicate ? 'outline' : 'default'}
                   >
                     {saving ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Guardando...
                       </>
+                    ) : previewData.isDuplicate ? (
+                      'Factura Duplicada - No se puede guardar'
                     ) : (
                       'Guardar Gasto'
                     )}

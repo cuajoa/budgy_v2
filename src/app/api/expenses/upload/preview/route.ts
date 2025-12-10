@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/presentation/middleware/auth';
 import { ProviderRepository } from '@/infrastructure/repositories/ProviderRepository';
 import { BudgetPeriodRepository } from '@/infrastructure/repositories/BudgetPeriodRepository';
+import { ExpenseRepository } from '@/infrastructure/repositories/ExpenseRepository';
 import { OpenAIService } from '@/infrastructure/services/OpenAIService';
 import { ExchangeRateService } from '@/infrastructure/services/ExchangeRateService';
 import { parse } from 'date-fns';
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
 
     const providerRepository = new ProviderRepository();
     const budgetPeriodRepository = new BudgetPeriodRepository();
+    const expenseRepository = new ExpenseRepository();
     const openAIService = new OpenAIService();
     const exchangeRateService = new ExchangeRateService();
 
@@ -58,6 +60,17 @@ export async function POST(request: NextRequest) {
         providerName = existingProvider.name;
         providerTaxId = existingProvider.taxId || extractedData.providerTaxId || '';
       }
+    }
+
+    // Validar si la factura ya existe (solo si tenemos número de factura y proveedor)
+    let existingExpense = null;
+    if (extractedData.invoiceNumber && providerId) {
+      // Normalizar el número de factura antes de comparar
+      const normalizedInvoiceNumber = extractedData.invoiceNumber.replace(/[\s-]/g, '').toUpperCase().trim();
+      existingExpense = await expenseRepository.findByInvoiceNumberAndProvider(
+        normalizedInvoiceNumber,
+        providerId
+      );
     }
 
     // Obtener período activo
@@ -108,6 +121,9 @@ export async function POST(request: NextRequest) {
       description: extractedData.description || '',
       budgetPeriodId: activePeriod?.id || null,
       budgetPeriodDescription: activePeriod?.description || null,
+      isDuplicate: existingExpense !== null,
+      existingExpenseId: existingExpense?.id || null,
+      existingExpenseDate: existingExpense?.invoiceDate ? new Date(existingExpense.invoiceDate).toISOString().split('T')[0] : null,
     });
   } catch (error) {
     console.error('Error procesando preview de factura:', error);

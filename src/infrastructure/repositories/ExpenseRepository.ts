@@ -69,33 +69,104 @@ export class ExpenseRepository implements IExpenseRepository {
     return result.rows.length > 0 ? this.mapRowToExpense(result.rows[0]) : null;
   }
 
-  async create(data: CreateExpenseDTO): Promise<Expense> {
+  async findByInvoiceNumberAndProvider(invoiceNumber: string, providerId: number): Promise<Expense | null> {
+    // Normalizar el número de factura: remover espacios, guiones y convertir a mayúsculas
+    const normalizedInvoiceNumber = invoiceNumber.replace(/[\s-]/g, '').toUpperCase().trim();
+    
     const result = await this.pool.query(
-      `INSERT INTO expenses (company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
-                            company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
-                            description, pdf_path, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       RETURNING id, company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
-                 company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
-                 description, pdf_path, created_by, created_at, updated_at, deleted_at`,
-      [
-        data.companyId,
-        data.providerId,
-        data.costCenterId,
-        data.expenseTypeId,
-        data.budgetPeriodId,
-        data.companyAreaId || null,
-        data.invoiceNumber || null,
-        data.invoiceDate,
-        data.amountArs,
-        data.amountUsd,
-        data.exchangeRate,
-        data.description || null,
-        data.pdfPath || null,
-        data.createdBy || null,
-      ]
+      `SELECT id, company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
+              company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+              description, pdf_path, created_by, created_at, updated_at, deleted_at
+       FROM expenses 
+       WHERE REPLACE(REPLACE(UPPER(TRIM(invoice_number)), ' ', ''), '-', '') = $1 
+         AND provider_id = $2 
+         AND deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [normalizedInvoiceNumber, providerId]
     );
-    return this.mapRowToExpense(result.rows[0]);
+    return result.rows.length > 0 ? this.mapRowToExpense(result.rows[0]) : null;
+  }
+
+  async create(data: CreateExpenseDTO): Promise<Expense> {
+    // Iniciar transacción
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Insertar el gasto
+      const result = await client.query(
+        `INSERT INTO expenses (company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
+                              company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+                              description, pdf_path, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING id, company_id, provider_id, cost_center_id, expense_type_id, budget_period_id,
+                   company_area_id, invoice_number, invoice_date, amount_ars, amount_usd, exchange_rate,
+                   description, pdf_path, created_by, created_at, updated_at, deleted_at`,
+        [
+          data.companyId,
+          data.providerId,
+          data.costCenterId,
+          data.expenseTypeId,
+          data.budgetPeriodId,
+          data.companyAreaId || null,
+          data.invoiceNumber || null,
+          data.invoiceDate,
+          data.amountArs,
+          data.amountUsd,
+          data.exchangeRate,
+          data.description || null,
+          data.pdfPath || null,
+          data.createdBy || null,
+        ]
+      );
+
+      const expense = this.mapRowToExpense(result.rows[0]);
+
+      // Insertar compañías adicionales si existen
+      if (data.additionalCompanyIds && data.additionalCompanyIds.length > 0) {
+        // Incluir también la compañía principal en el prorrateo
+        const allCompanyIds = [data.companyId, ...data.additionalCompanyIds];
+        const uniqueCompanyIds = [...new Set(allCompanyIds)]; // Remover duplicados
+
+        for (const companyId of uniqueCompanyIds) {
+          await client.query(
+            'INSERT INTO expense_companies (expense_id, company_id) VALUES ($1, $2) ON CONFLICT (expense_id, company_id) DO NOTHING',
+            [expense.id, companyId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return expense;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getExpenseCompanies(expenseId: number): Promise<number[]> {
+    const result = await this.pool.query(
+      'SELECT company_id FROM expense_companies WHERE expense_id = $1',
+      [expenseId]
+    );
+    return result.rows.map(row => row.company_id);
+  }
+
+  async addExpenseCompany(expenseId: number, companyId: number): Promise<void> {
+    await this.pool.query(
+      'INSERT INTO expense_companies (expense_id, company_id) VALUES ($1, $2) ON CONFLICT (expense_id, company_id) DO NOTHING',
+      [expenseId, companyId]
+    );
+  }
+
+  async removeExpenseCompanies(expenseId: number): Promise<void> {
+    await this.pool.query(
+      'DELETE FROM expense_companies WHERE expense_id = $1',
+      [expenseId]
+    );
   }
 
   async update(id: number, data: UpdateExpenseDTO): Promise<Expense> {

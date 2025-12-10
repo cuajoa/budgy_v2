@@ -4,7 +4,7 @@ import { ProviderRepository } from '@/infrastructure/repositories/ProviderReposi
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -13,9 +13,10 @@ export async function PUT(
     //   return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     // }
 
+    const { id } = await params;
     const body = await request.json();
     const providerRepository = new ProviderRepository();
-    const provider = await providerRepository.update(parseInt(params.id), body);
+    const provider = await providerRepository.update(parseInt(id), body);
 
     return NextResponse.json(provider);
   } catch (error) {
@@ -26,7 +27,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -35,8 +36,9 @@ export async function DELETE(
     //   return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     // }
 
+    const { id } = await params;
     const providerRepository = new ProviderRepository();
-    await providerRepository.delete(parseInt(params.id));
+    await providerRepository.delete(parseInt(id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -75,9 +75,16 @@ INSTRUCCIONES CRÍTICAS PARA CADA CAMPO:
 - El proveedor REAL está en la PRIMERA sección con "Razón Social:", generalmente en la parte superior izquierda del documento
 - Si la factura tiene dos secciones con "Razón Social:", usa SOLO la PRIMERA (la del proveedor), NUNCA la segunda (que es el cliente)
 
-**invoiceNumber:**
-- Busca el número de factura cerca de etiquetas como: "Factura N°", "Comp. Nro:", "Número de Factura", "Nro Factura", etc.
-- Puede tener formato como "A - 0018 - 00411103" o simplemente números
+**invoiceNumber (CRÍTICO - LEER CON ATENCIÓN):**
+- El número de factura SIEMPRE está asociado al label "Factura N°" (puede aparecer como "Factura N°", "Factura Nro:", "Factura Número:", etc.)
+- Busca ESPECÍFICAMENTE el label "Factura N°" y extrae el número que está inmediatamente después
+- **EXCLUYE EXPLÍCITAMENTE:**
+  * Números de cliente (pueden aparecer como "Cliente:", "Número de Cliente:", "Cliente N°", etc.)
+  * Números de cuenta (pueden aparecer como "Cuenta:", "Número de Cuenta:", "Cuenta N°", etc.)
+  * Cualquier número que NO esté asociado directamente al label "Factura N°"
+- El número de factura generalmente está en la parte superior de la factura, cerca del tipo de documento (Factura A, B, C, etc.)
+- Puede tener formato como "A - 0018 - 00411103", "0471-02002033", "00000072", o simplemente números
+- Si encuentras múltiples números, usa SOLO el que está después de "Factura N°", NO otros números como "Cliente N°" o "Cuenta N°"
 
 **invoiceDate (CRÍTICO):**
 - La fecha de la factura SIEMPRE está cerca del número de factura
@@ -112,7 +119,7 @@ Extrae la siguiente información en formato JSON:
 {
   "providerName": "nombre del proveedor extraído del campo 'Razón Social:' de la PRIMERA SECCIÓN (quien emitió la factura). DEBE ser la primera sección con 'Razón Social:' que encuentres. NUNCA uses 'LATIN SECURITIES' ni 'DELTA ASSET MANAGEMENT' - esos son siempre clientes. Usa el valor exacto encontrado.",
   "providerTaxId": "CUIT del proveedor extraído del campo 'CUIT:' o 'C.U.I.T.:' de la MISMA PRIMERA sección del proveedor (solo números, sin guiones ni espacios). NUNCA uses el CUIT de la sección que contiene 'LATIN SECURITIES' o 'DELTA ASSET MANAGEMENT'.",
-  "invoiceNumber": "número de factura encontrado cerca de etiquetas como 'Factura N°', 'Comp. Nro:', etc.",
+  "invoiceNumber": "número de factura extraído ESPECÍFICAMENTE del label 'Factura N°' (o variaciones como 'Factura Nro:', 'Factura Número:'). DEBE estar asociado directamente a 'Factura N°'. NUNCA uses números de cliente, cuenta, o cualquier otro número que no sea el número de factura.",
   "invoiceDate": "fecha de emisión de la factura en formato YYYY-MM-DD. DEBE estar cerca del número de factura. EXCLUYE 'INICIO DE ACTIVIDADES' y otras fechas administrativas.",
   "amount": número del monto TOTAL de la factura (buscar específicamente el label 'TOTAL'). Solo el número, sin símbolos, sin puntos de miles, usar punto como decimal si aplica (ej: 512528.32 o 353.47)",
   "currency": "ARS o USD según el monto extraído (si dice 'u$s' o 'USD' es USD, si dice '$' es ARS)",

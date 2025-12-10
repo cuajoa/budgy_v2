@@ -26,6 +26,8 @@ async function runMigrations() {
       '002_insert_initial_data.sql',
       '003_create_stored_procedures.sql',
       '004_add_company_areas.sql',
+      '005_add_expense_companies.sql',
+      '006_add_performance_indexes.sql',
     ];
 
     for (const file of migrationFiles) {

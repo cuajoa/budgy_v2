@@ -3,7 +3,7 @@ import { CompanyAreaRepository } from '@/infrastructure/repositories/CompanyArea
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -16,9 +16,10 @@ export async function PUT(
     //   return NextResponse.json({ error: 'No tiene permisos para editar áreas' }, { status: 403 });
     // }
 
+    const { id } = await params;
     const body = await request.json();
     const companyAreaRepository = new CompanyAreaRepository();
-    const area = await companyAreaRepository.update(parseInt(params.id), body);
+    const area = await companyAreaRepository.update(parseInt(id), body);
 
     return NextResponse.json(area);
   } catch (error) {
@@ -29,7 +30,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -42,8 +43,9 @@ export async function DELETE(
     //   return NextResponse.json({ error: 'No tiene permisos para eliminar áreas' }, { status: 403 });
     // }
 
+    const { id } = await params;
     const companyAreaRepository = new CompanyAreaRepository();
-    await companyAreaRepository.delete(parseInt(params.id));
+    await companyAreaRepository.delete(parseInt(id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

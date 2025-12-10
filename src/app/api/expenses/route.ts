@@ -36,7 +36,19 @@ export async function GET(request: NextRequest) {
     // }
 
     const expenses = await expenseRepository.findAll(filters);
-    return NextResponse.json(expenses);
+    
+    // Enriquecer cada gasto con sus compañías adicionales
+    const expensesWithCompanies = await Promise.all(
+      expenses.map(async (expense) => {
+        const additionalCompanyIds = await expenseRepository.getExpenseCompanies(expense.id);
+        return {
+          ...expense,
+          additionalCompanyIds: additionalCompanyIds.length > 0 ? additionalCompanyIds : undefined,
+        };
+      })
+    );
+    
+    return NextResponse.json(expensesWithCompanies);
   } catch (error) {
     console.error('Error obteniendo gastos:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
@@ -60,6 +72,10 @@ export async function POST(request: NextRequest) {
     const expenseRepository = new ExpenseRepository();
     const exchangeRateService = new ExchangeRateService();
     const createExpenseUseCase = new CreateExpenseUseCase(expenseRepository, exchangeRateService);
+
+    if (!user) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
 
     const expense = await createExpenseUseCase.execute({
       ...body,

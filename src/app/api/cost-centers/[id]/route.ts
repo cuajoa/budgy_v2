@@ -4,7 +4,7 @@ import { CostCenterRepository } from '@/infrastructure/repositories/CostCenterRe
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -17,9 +17,10 @@ export async function PUT(
     //   return NextResponse.json({ error: 'No tiene permisos para editar centros de costo' }, { status: 403 });
     // }
 
+    const { id } = await params;
     const body = await request.json();
     const costCenterRepository = new CostCenterRepository();
-    const costCenter = await costCenterRepository.update(parseInt(params.id), body);
+    const costCenter = await costCenterRepository.update(parseInt(id), body);
 
     return NextResponse.json(costCenter);
   } catch (error) {
@@ -30,7 +31,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // AUTENTICACIÓN DESHABILITADA TEMPORALMENTE
@@ -43,8 +44,9 @@ export async function DELETE(
     //   return NextResponse.json({ error: 'No tiene permisos para eliminar centros de costo' }, { status: 403 });
     // }
 
+    const { id } = await params;
     const costCenterRepository = new CostCenterRepository();
-    await costCenterRepository.delete(parseInt(params.id));
+    await costCenterRepository.delete(parseInt(id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

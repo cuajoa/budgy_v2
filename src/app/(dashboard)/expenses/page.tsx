@@ -14,6 +14,7 @@ interface Expense {
   expenseTypeId: number;
   budgetPeriodId: number;
   companyAreaId?: number;
+  additionalCompanyIds?: number[];
   invoiceNumber?: string;
   invoiceDate: string;
   amountArs: number;
@@ -67,6 +68,7 @@ export default function ExpensesPage() {
   const [loading, setLoading] = useState(true);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editAdditionalCompanyIds, setEditAdditionalCompanyIds] = useState<number[]>([]);
   const [editFormData, setEditFormData] = useState({
     providerId: '',
     costCenterId: '',
@@ -222,6 +224,8 @@ export default function ExpensesPage() {
         amountArs: expenseData.amountArs.toString(),
         description: expenseData.description || '',
       });
+      // Cargar compañías adicionales
+      setEditAdditionalCompanyIds(expenseData.additionalCompanyIds || []);
 
       // Cargar cost centers y areas para la compañía del gasto
       const [costCentersRes, areasRes] = await Promise.all([
@@ -268,6 +272,7 @@ export default function ExpensesPage() {
           expenseTypeId: parseInt(editFormData.expenseTypeId),
           budgetPeriodId: parseInt(editFormData.budgetPeriodId),
           companyAreaId: editFormData.companyAreaId ? parseInt(editFormData.companyAreaId) : undefined,
+          additionalCompanyIds: editAdditionalCompanyIds.length > 0 ? editAdditionalCompanyIds : undefined,
           invoiceNumber: editFormData.invoiceNumber || undefined,
           invoiceDate: editFormData.invoiceDate,
           amountArs: parseFloat(editFormData.amountArs),
@@ -418,16 +423,17 @@ export default function ExpensesPage() {
                       const costCenterId = expense.costCenterId;
                       
                       if (!acc[companyId]) {
-                        acc[companyId] = {};
+                        acc[companyId] = {} as Record<number, Expense[]>;
                       }
-                      if (!acc[companyId][costCenterId]) {
-                        acc[companyId][costCenterId] = [];
+                      const companyData = acc[companyId];
+                      if (!companyData[costCenterId]) {
+                        companyData[costCenterId] = [];
                       }
-                      acc[companyId][costCenterId].push(expense);
+                      companyData[costCenterId].push(expense);
                       return acc;
                     }, {} as Record<number, Record<number, Expense[]>>);
 
-                    const rows: JSX.Element[] = [];
+                    const rows: React.ReactElement[] = [];
                     let totalArs = 0;
                     let totalUsd = 0;
 
@@ -708,6 +714,45 @@ export default function ExpensesPage() {
                     El monto en USD se recalculará automáticamente
                   </p>
                 </div>
+              </div>
+
+              {/* Compañías adicionales para prorrateo */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Aplica a otras compañías (Prorrateo)</label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Selecciona las compañías adicionales a las que aplica este gasto. El monto se prorrateará equitativamente entre la compañía del gasto y las adicionales seleccionadas.
+                </p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {companies
+                    .filter((c) => editingExpense && c.id !== editingExpense.companyId)
+                    .map((company) => (
+                      <label
+                        key={company.id}
+                        className="flex items-center space-x-2 p-2 rounded-md border border-input hover:bg-accent cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editAdditionalCompanyIds.includes(company.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditAdditionalCompanyIds([...editAdditionalCompanyIds, company.id]);
+                            } else {
+                              setEditAdditionalCompanyIds(editAdditionalCompanyIds.filter((id) => id !== company.id));
+                            }
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                        <span className="text-sm">{company.name}</span>
+                      </label>
+                    ))}
+                </div>
+                {editAdditionalCompanyIds.length > 0 && editingExpense && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    El gasto se prorrateará entre {companies.find(c => c.id === editingExpense.companyId)?.name || 'la compañía del gasto'} y {editAdditionalCompanyIds.length} compañía(s) adicional(es). 
+                    Total: {editAdditionalCompanyIds.length + 1} compañía(s). 
+                    Monto por compañía: {formatCurrency((parseFloat(editFormData.amountArs || '0') / editingExpense.exchangeRate) / (editAdditionalCompanyIds.length + 1), 'USD')}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
