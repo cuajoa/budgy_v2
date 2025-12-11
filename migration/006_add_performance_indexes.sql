@@ -150,3 +150,5 @@ WHERE deleted_at IS NULL;
 -- - Los índices en las columnas base aún ayudan al optimizador
 -- - Considerar índices funcionales si PostgreSQL lo soporta (versión 12+)
 
+
+
